@@ -19,13 +19,13 @@ const (
 )
 
 type Poller struct {
-	el         *eventloop
+	el         *Eventloop
 	epollFd    int
 	eventList  []epollevent
 	channelMap map[int]*Channel
 }
 
-func NewPoller(el *eventloop) (poller *Poller, err error) {
+func newPoller(el *Eventloop) (poller *Poller, err error) {
 	poller = new(Poller)
 	if poller.epollFd, err = unix.EpollCreate1(unix.EPOLL_CLOEXEC); err != nil {
 		poller = nil
@@ -110,7 +110,7 @@ func (p *Poller) update(op int, channel *Channel) {
 }
 
 func events2String(fd int, events uint32) string {
-	res := "fd = " + strconv.Itoa(fd) + " "
+	res := "fd = " + strconv.Itoa(fd) + " EVENT: "
 	if events&unix.EPOLLIN != 0 {
 		res += "IN "
 	}

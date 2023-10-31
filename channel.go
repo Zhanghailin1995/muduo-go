@@ -16,7 +16,7 @@ const (
 
 type Channel struct {
 	ele           *list.Element
-	el            *eventloop
+	el            *Eventloop
 	fd            int
 	events        uint32
 	revents       uint32
@@ -26,15 +26,19 @@ type Channel struct {
 	errorCallback EventCallback
 }
 
-func NewChannel(el *eventloop, fd int) *Channel {
+func NewChannel(el *Eventloop, fd int) *Channel {
 	return &Channel{
 		ele:     nil,
 		el:      el,
 		fd:      fd,
 		events:  eventNone,
 		revents: 0,
-		index:   -1,
+		index:   channelNew,
 	}
+}
+
+func (c *Channel) setReadCallback(cb EventCallback) {
+	c.readCallback = cb
 }
 
 func (c *Channel) enableReading() {
@@ -51,6 +55,7 @@ func (c *Channel) update() {
 }
 
 func (c *Channel) handleEvent() {
+	logging.Debugf("Channel::handleEvent() %s", events2String(c.fd, c.revents))
 	if c.revents&unix.POLLNVAL != 0 {
 		logging.Warnf("Channel::handleEvent() POLLNVAL")
 	}
