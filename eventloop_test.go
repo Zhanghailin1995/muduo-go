@@ -42,7 +42,7 @@ func TestEventloop_Schedule(t *testing.T) {
 	when := time.Now().Add(time.Second * 2)
 	el.Schedule(func() {
 		logging.Infof("hello world")
-		el.stop()
+		el.Stop()
 	}, when)
 	el.loop()
 
@@ -53,7 +53,7 @@ func TestEventloop_ScheduleDelay(t *testing.T) {
 	el := NewEventloop()
 	el.ScheduleDelay(func() {
 		logging.Infof("hello world")
-		el.stop()
+		el.Stop()
 	}, time.Second*2)
 	el.loop()
 
@@ -67,9 +67,37 @@ func TestEventloop_ScheduleAtFixRate(t *testing.T) {
 		count++
 		logging.Infof("hello world: %d", count)
 		if count == 5 {
-			el.stop()
+			el.Stop()
 		}
 	}, time.Second*2)
+	el.loop()
+
+	logging.Infof("eventloop stopped")
+}
+
+func TestEventloop_Execute(t *testing.T) {
+	el := NewEventloop()
+	el.Schedule(func() {
+		el.Execute(func() {
+			logging.Infof("hello world")
+		})
+	}, time.Now().Add(time.Second*2))
+	el.loop()
+
+	logging.Infof("eventloop stopped")
+}
+
+func TestEventloop_AsyncExecute(t *testing.T) {
+	el := NewEventloop()
+	el.Schedule(func() {
+		el.AsyncExecute(func() {
+			logging.Infof("^_^ ^_^ ^_^ ^_^ ^_^ ^_^ async hello world ^_^ ^_^ ^_^ ^_^ ^_^ ^_^")
+			el.ScheduleDelay(func() {
+				logging.Infof("^_^ ^_^ ^_^ ^_^ ^_^ ^_^ async hello world after 2 seconds ^_^ ^_^ ^_^ ^_^ ^_^ ^_^")
+				el.AsyncStop()
+			}, time.Second*2)
+		})
+	}, time.Now().Add(time.Second*2))
 	el.loop()
 
 	logging.Infof("eventloop stopped")
