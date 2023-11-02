@@ -53,9 +53,7 @@ func newTimerQueue(el *Eventloop) *timerQueue {
 			tasks: make([]*timerTask, 0),
 		},
 	}
-	timerFdChannel.setReadCallback(func() {
-		tq.handleRead()
-	})
+	timerFdChannel.setReadCallback(tq.handleRead)
 	timerFdChannel.enableReading()
 	return tq
 }
@@ -75,7 +73,7 @@ func (tq *timerQueue) addTask(cb func(), t time.Time, interval time.Duration) *t
 	return tt
 }
 
-func (tq *timerQueue) handleRead() {
+func (tq *timerQueue) handleRead(ts time.Time) {
 	logging.Debugf("timerQueue::handleRead()")
 	var exp uint64
 	_, err := unix.Read(tq.timerFd, (*(*[8]byte)(unsafe.Pointer(&exp)))[:])

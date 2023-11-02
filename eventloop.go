@@ -44,14 +44,12 @@ func NewEventloop() *Eventloop {
 	el.evtFd = createEventFd()
 	wakeupChannel := NewChannel(el, el.evtFd)
 	el.wakeupChannel = wakeupChannel
-	wakeupChannel.setReadCallback(func() {
-		el.handleRead()
-	})
+	wakeupChannel.setReadCallback(el.handleRead)
 	wakeupChannel.enableReading()
 	return el
 }
 
-func (el *Eventloop) handleRead() {
+func (el *Eventloop) handleRead(_ time.Time) {
 	var one uint64
 	_, _ = unix.Read(el.evtFd, (*(*[8]byte)(unsafe.Pointer(&one)))[:])
 }
@@ -134,10 +132,10 @@ func (el *Eventloop) loop() {
 			break
 		}
 		el.activeChannels.Init()
-		el.poller.poll(pollTimeoutMills)
+		retTs := el.poller.poll(pollTimeoutMills)
 		for e := el.activeChannels.Front(); e != nil; e = e.Next() {
 			channel := e.Value.(*Channel)
-			channel.handleEvent()
+			channel.handleEvent(retTs)
 		}
 		el.runPendingTasks()
 	}
@@ -145,6 +143,11 @@ func (el *Eventloop) loop() {
 	logging.Infof("Eventloop Stop looping")
 
 	atomic.StoreInt32(&el.looping, 0)
+	el.destroy()
+}
+
+func (el *Eventloop) destroy() {
+	_ = unix.Close(el.evtFd)
 }
 
 func (el *Eventloop) Stop() {
@@ -158,4 +161,8 @@ func (el *Eventloop) AsyncStop() {
 
 func (el *Eventloop) updateChannel(channel *Channel) {
 	el.poller.updateChannel(channel)
+}
+
+func (el *Eventloop) removeChannel(channel *Channel) {
+	el.poller.removeChannel(channel)
 }

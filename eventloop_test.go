@@ -20,7 +20,7 @@ func TestEventloop_Timefd(t *testing.T) {
 		t.Fatal(err)
 	}
 	ch := NewChannel(el, timerFd)
-	ch.readCallback = func() {
+	ch.readCallback = func(ts time.Time) {
 		t.Log("timerfd readCallback")
 		// read timefd
 		var exp uint64

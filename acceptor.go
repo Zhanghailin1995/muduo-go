@@ -4,6 +4,7 @@ import (
 	"muduo/pkg/logging"
 	"net"
 	"strings"
+	"time"
 )
 
 type acceptor struct {
@@ -11,6 +12,7 @@ type acceptor struct {
 	so        *socket
 	ch        *Channel
 	cb        func(int, net.Addr)
+	localAddr net.Addr
 	listening bool
 }
 
@@ -25,7 +27,8 @@ func newAcceptor(el *Eventloop, addr string, cb func(int, net.Addr)) *acceptor {
 	}
 	_ = so.setReuseAddr(true)
 	network, addr := parseProtoAddr(addr)
-	err := so.bind(network, addr)
+	localAddr, err := so.bind(network, addr)
+	a.localAddr = SockaddrToTCPAddr(localAddr)
 	if err != nil {
 		logging.Errorf("bind() failed due to error: %v", err)
 	}
@@ -50,7 +53,7 @@ func (a *acceptor) listen() {
 	a.ch.enableReading()
 }
 
-func (a *acceptor) handleRead() {
+func (a *acceptor) handleRead(ts time.Time) {
 	fd, addr, err := a.so.accept()
 	if err != nil {
 		err = a.so.close()

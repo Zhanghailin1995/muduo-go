@@ -97,6 +97,18 @@ func (p *Poller) updateChannel(channel *Channel) {
 	}
 }
 
+func (p *Poller) removeChannel(channel *Channel) {
+	fd := channel.fd
+	idx := channel.index
+	util.Assert(p.channelMap[fd] == channel, "channelMap should have fd %d", fd)
+	util.Assert(idx == channelAdd || idx == channelDel, "channel index should be channelAdd or channelDel")
+	delete(p.channelMap, fd)
+	if channel.index == channelAdd {
+		p.update(unix.EPOLL_CTL_DEL, channel)
+	}
+	channel.index = channelNew
+}
+
 func (p *Poller) update(op int, channel *Channel) {
 	var ev epollevent
 	ev.events = channel.events

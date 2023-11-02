@@ -20,16 +20,16 @@ func newSocket() *socket {
 	return &socket{fd: fd}
 }
 
-func (s *socket) bind(network, addr string) error {
+func (s *socket) bind(network, addr string) (unix.Sockaddr, error) {
 	sa, _, _, _, err := GetTCPSockAddr(network, addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = unix.Bind(s.fd, sa)
 	if err != nil {
 		panic(err)
 	}
-	return nil
+	return sa, nil
 }
 
 func (s *socket) accept() (int, net.Addr, error) {
