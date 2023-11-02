@@ -1,16 +1,22 @@
 package muduo
 
 import (
+	"golang.org/x/sys/unix"
+	"muduo/pkg/errors"
 	"muduo/pkg/logging"
+	"muduo/pkg/util"
 	"net"
 	"time"
 )
 
-type ConnState int
+type ConnState int32
+
+type AsyncCallback func(c *TcpConn, err error) error
 
 const (
 	Connecting ConnState = iota
 	Connected
+	Disconnecting
 	Disconnected
 )
 
@@ -26,6 +32,7 @@ type TcpConn struct {
 	onMsg     func(*TcpConn, *Buffer, time.Time)
 	onClose   func(*TcpConn)
 	inbound   *Buffer
+	outbound  *Buffer
 }
 
 func NewTcpConn(el *Eventloop, name string, fd int, localAddr, peerAddr net.Addr) *TcpConn {
@@ -38,6 +45,7 @@ func NewTcpConn(el *Eventloop, name string, fd int, localAddr, peerAddr net.Addr
 		localAddr: localAddr,
 		peerAddr:  peerAddr,
 		inbound:   NewBuffer(),
+		outbound:  NewBuffer(),
 	}
 	logging.Debugf("new connection: fd=%d, addr=%s", fd, peerAddr.String())
 	conn.ch.setReadCallback(conn.handleRead)
@@ -56,7 +64,69 @@ func (c *TcpConn) SetOnClose(cb func(*TcpConn)) {
 	c.onClose = cb
 }
 
+func (c *TcpConn) Write(buf []byte) (int, error) {
+	if c.state == Connected {
+		var sent int
+		// if no data in outbound buffer, try writing directly
+		if !c.ch.isWriting() && c.outbound.ReadableBytes() == 0 {
+			n, err := unix.Write(c.ch.fd, buf)
+			if err != nil && err != unix.EWOULDBLOCK {
+				logging.Errorf("write error: %v", err)
+				return sent, err
+			}
+			sent = n
+			if sent < len(buf) {
+				logging.Debugf("write partial data: %d/%d", n, len(buf))
+			}
+		}
+		if sent < len(buf) {
+			_, _ = c.outbound.Write(buf[sent:])
+			if !c.ch.isWriting() {
+				c.ch.enableWriting()
+			}
+		}
+		return sent, nil
+	} else {
+		return 0, errors.ErrConnNotOpened
+	}
+}
+
+func (c *TcpConn) AsyncWrite(buf []byte, cb AsyncCallback) error {
+	if c.state == Connected {
+		c.el.AsyncExecute(func() {
+			var err error
+			_, err = c.Write(buf)
+			if cb != nil {
+				err = cb(c, err)
+			}
+			if err != nil {
+				logging.Errorf("async write error: %v", err)
+				c.handleError(err)
+			}
+		})
+		return nil
+	} else {
+		return errors.ErrConnNotOpened
+	}
+}
+
+func (c *TcpConn) ShutdownWrite() {
+	if c.state == Connected {
+		c.el.AsyncExecute(c.shutdownWrite)
+	}
+}
+
+func (c *TcpConn) shutdownWrite() {
+	if !c.ch.isWriting() {
+		err := unix.Shutdown(c.ch.fd, unix.SHUT_WR)
+		if err != nil {
+			logging.Errorf("shutdown error: %v", err)
+		}
+	}
+}
+
 func (c *TcpConn) connectEstablished() {
+	util.Assert(c.state == Connecting, "state should be connecting")
 	c.state = Connected
 	c.ch.enableReading()
 	if c.onConn != nil {
@@ -65,6 +135,7 @@ func (c *TcpConn) connectEstablished() {
 }
 
 func (c *TcpConn) connectDestroyed() {
+	util.Assert(c.state == Connected || c.state == Disconnecting, "state should be connected or disconnecting")
 	c.state = Disconnected
 	c.ch.disableAll()
 	c.onConn(c)
@@ -88,7 +159,26 @@ func (c *TcpConn) handleRead(ts time.Time) {
 }
 
 func (c *TcpConn) handleWrite() {
-
+	if c.ch.isWriting() {
+		data := c.outbound.Peek()
+		n, err := unix.Write(c.ch.fd, data)
+		if err != nil && err != unix.EWOULDBLOCK {
+			logging.Errorf("write error: %v", err)
+			c.handleError(err)
+			return
+		}
+		c.outbound.Advance(n)
+		if c.outbound.ReadableBytes() == 0 {
+			c.ch.disableWriting()
+			if c.state == Disconnecting {
+				c.shutdownWrite()
+			}
+		} else {
+			logging.Debugf("more data to write: %d", c.outbound.ReadableBytes())
+		}
+	} else {
+		logging.Warn("connection is down, no more writing")
+	}
 }
 
 func (c *TcpConn) handleClose() {

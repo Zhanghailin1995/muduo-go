@@ -62,9 +62,9 @@ func createEventFd() int {
 	return evtFd
 }
 
-func (el *Eventloop) Execute(task Task) {
-	task()
-}
+//func (el *Eventloop) Execute(task Task) {
+//	task()
+//}
 
 func (el *Eventloop) AsyncExecute(task Task) {
 	el.taskMutex.Lock()

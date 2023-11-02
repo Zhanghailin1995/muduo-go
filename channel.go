@@ -68,6 +68,20 @@ func (c *Channel) disableAll() {
 	c.update()
 }
 
+func (c *Channel) disableWriting() {
+	c.events &= ^uint32(eventWrite)
+	c.update()
+}
+
+func (c *Channel) enableWriting() {
+	c.events |= eventWrite
+	c.update()
+}
+
+func (c *Channel) isWriting() bool {
+	return c.events&eventWrite != 0
+}
+
 func (c *Channel) IsNoneEvent() bool {
 	return c.events == eventNone
 }

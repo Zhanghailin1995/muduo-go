@@ -78,7 +78,7 @@ func TestEventloop_ScheduleAtFixRate(t *testing.T) {
 func TestEventloop_Execute(t *testing.T) {
 	el := NewEventloop()
 	el.Schedule(func() {
-		el.Execute(func() {
+		el.AsyncExecute(func() {
 			logging.Infof("hello world")
 		})
 	}, time.Now().Add(time.Second*2))

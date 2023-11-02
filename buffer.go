@@ -17,6 +17,9 @@ func NewBuffer() *Buffer {
 }
 
 func (b *Buffer) ReadFd(fd int) (int, error) {
+	// Using 64K stack-allocated buffer to avoid heap allocation
+	// usually all data can be read in one readv() syscall. Even if it is not read all data
+	// in one time, muduo use level-triggered epoll, so it will be called again.
 	var extraBuf [65536]byte
 	var iov [2][]byte
 	iov[0] = b.buf[b.writeIndex:]

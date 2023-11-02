@@ -20,7 +20,7 @@ func init() {
 	cfg.EncodeTime = zapcore.ISO8601TimeEncoder
 	consoleEncoder := zapcore.NewConsoleEncoder(cfg)
 	// console
-	allCore = append(allCore, zapcore.NewCore(consoleEncoder, consoleDebugging, zapcore.InfoLevel))
+	allCore = append(allCore, zapcore.NewCore(consoleEncoder, consoleDebugging, zapcore.DebugLevel))
 	core := zapcore.NewTee(allCore...)
 
 	// From a zapcore.Core, it's easy to construct a Logger.

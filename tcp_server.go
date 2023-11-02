@@ -37,7 +37,7 @@ func (s *TcpServer) Start() {
 		s.started = true
 	}
 	if !s.ac.listening {
-		s.el.Execute(func() {
+		s.el.AsyncExecute(func() {
 			s.ac.listen()
 		})
 	}
@@ -74,18 +74,13 @@ func (s *TcpServer) newConn(fd int, addr net.Addr) {
 func (s *TcpServer) removeConn(conn *TcpConn) {
 	delete(s.connMap, conn.name)
 	// why use el.AsyncExecute?
-	//s.el.AsyncExecute(func() {
-	//	conn.connectDestroyed()
-	//	err := conn.so.close()
-	//	if err != nil {
-	//		logging.Errorf("close socket error: %v", err)
-	//	}
-	//})
-	conn.connectDestroyed()
-	err := conn.so.close()
-	if err != nil {
-		logging.Errorf("close socket error: %v", err)
-	}
+	s.el.AsyncExecute(func() {
+		conn.connectDestroyed()
+		err := conn.so.close()
+		if err != nil {
+			logging.Errorf("close socket error: %v", err)
+		}
+	})
 }
 
 // SockaddrToTCPAddr converts a Sockaddr to a net.TCPAddr
