@@ -9,21 +9,24 @@ import (
 )
 
 type TcpServer struct {
-	el         *Eventloop
-	name       string
-	ac         *acceptor
-	onConn     func(*TcpConn)
-	onMsg      func(*TcpConn, *Buffer, time.Time)
-	started    bool
-	nextConnId uint64
-	connMap    map[string]*TcpConn
+	el              *Eventloop
+	name            string
+	ac              *acceptor
+	group           *EventloopEngineGroup
+	onConn          func(*TcpConn)
+	onMsg           func(*TcpConn, *Buffer, time.Time)
+	onWriteComplete func(*TcpConn)
+	started         bool
+	nextConnId      uint64
+	connMap         map[string]*TcpConn
 }
 
-func NewTcpServer(el *Eventloop, name string, addr string) *TcpServer {
+func NewTcpServer(el *Eventloop, name string, addr string, engineCnt int) *TcpServer {
 	s := &TcpServer{
 		el:         el,
 		name:       name,
 		ac:         newAcceptor(el, addr, nil),
+		group:      NewEventloopEngineGroup(engineCnt, el),
 		started:    false,
 		nextConnId: 1,
 		connMap:    make(map[string]*TcpConn),
@@ -35,6 +38,7 @@ func NewTcpServer(el *Eventloop, name string, addr string) *TcpServer {
 func (s *TcpServer) Start() {
 	if !s.started {
 		s.started = true
+		s.group.Start()
 	}
 	if !s.ac.listening {
 		s.el.AsyncExecute(func() {
@@ -51,6 +55,10 @@ func (s *TcpServer) SetOnMsg(cb func(*TcpConn, *Buffer, time.Time)) {
 	s.onMsg = cb
 }
 
+func (s *TcpServer) SetOnWriteComplete(cb func(*TcpConn)) {
+	s.onWriteComplete = cb
+}
+
 func (s *TcpServer) newConn(fd int, addr net.Addr) {
 	connName := s.name + "-conn-" + strconv.Itoa(int(s.nextConnId))
 	s.nextConnId++
@@ -63,18 +71,29 @@ func (s *TcpServer) newConn(fd int, addr net.Addr) {
 	//}
 	//localAddr := SockaddrToTCPAddr(localAddr0)
 	localAddr := s.ac.localAddr
-	conn := NewTcpConn(s.el, s.name, fd, localAddr, addr)
+	el := s.group.GetNextLoop()
+	conn := NewTcpConn(el, connName, fd, localAddr, addr)
+	_ = conn.SetTcpNoDelay(true)
 	s.connMap[connName] = conn
 	conn.SetOnConn(s.onConn)
 	conn.SetOnMsg(s.onMsg)
+	conn.SetOnWriteComplete(s.onWriteComplete)
 	conn.SetOnClose(s.removeConn)
-	conn.connectEstablished()
+	el.AsyncExecute(func() {
+		conn.connectEstablished()
+	})
 }
 
 func (s *TcpServer) removeConn(conn *TcpConn) {
-	delete(s.connMap, conn.name)
-	// why use el.AsyncExecute?
 	s.el.AsyncExecute(func() {
+		s.removeConnInLoop(conn)
+	})
+}
+
+func (s *TcpServer) removeConnInLoop(conn *TcpConn) {
+	delete(s.connMap, conn.name)
+	el := conn.el
+	el.AsyncExecute(func() {
 		conn.connectDestroyed()
 		err := conn.so.close()
 		if err != nil {

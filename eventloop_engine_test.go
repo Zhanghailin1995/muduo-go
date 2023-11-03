@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewEventloopEngine(t *testing.T) {
-	eb := NewEventloopEngine()
+	eb := NewEventloopEngine("worker")
 	el := eb.StartLoop()
 	el.AsyncExecute(func() {
 		logging.Infof(" ^_^ ^_^ ^_^ ^_^ ^_^ ^_^ hello world ^_^ ^_^ ^_^ ^_^ ^_^ ^_^ ")

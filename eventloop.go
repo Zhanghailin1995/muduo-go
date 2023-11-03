@@ -19,6 +19,7 @@ type Task func()
 type TimeoutCallback func()
 
 type Eventloop struct {
+	id                  string
 	looping             int32
 	quit                int32
 	activeChannels      *list.List
@@ -31,8 +32,9 @@ type Eventloop struct {
 	runningPendingTasks bool
 }
 
-func NewEventloop() *Eventloop {
+func NewEventloop(id string) *Eventloop {
 	el := &Eventloop{
+		id:                  id,
 		looping:             0,
 		quit:                0,
 		activeChannels:      list.New(),
@@ -67,6 +69,7 @@ func createEventFd() int {
 //}
 
 func (el *Eventloop) AsyncExecute(task Task) {
+	logging.Infof("eventloop[%s] async execute task", el.id)
 	el.taskMutex.Lock()
 	el.pendingTasks.PushBack(task)
 	el.taskMutex.Unlock()
@@ -135,6 +138,7 @@ func (el *Eventloop) loop() {
 		retTs := el.poller.poll(pollTimeoutMills)
 		for e := el.activeChannels.Front(); e != nil; e = e.Next() {
 			channel := e.Value.(*Channel)
+			logging.Debugf("Eventloop[%s] handle event", el.id)
 			channel.handleEvent(retTs)
 		}
 		el.runPendingTasks()

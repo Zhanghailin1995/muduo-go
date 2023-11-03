@@ -21,18 +21,19 @@ const (
 )
 
 type TcpConn struct {
-	el        *Eventloop
-	name      string
-	so        *socket
-	ch        *Channel
-	localAddr net.Addr
-	peerAddr  net.Addr
-	state     ConnState
-	onConn    func(*TcpConn)
-	onMsg     func(*TcpConn, *Buffer, time.Time)
-	onClose   func(*TcpConn)
-	inbound   *Buffer
-	outbound  *Buffer
+	el              *Eventloop
+	name            string
+	so              *socket
+	ch              *Channel
+	localAddr       net.Addr
+	peerAddr        net.Addr
+	state           ConnState
+	onConn          func(*TcpConn)
+	onMsg           func(*TcpConn, *Buffer, time.Time)
+	onClose         func(*TcpConn)
+	onWriteComplete func(*TcpConn)
+	inbound         *Buffer
+	outbound        *Buffer
 }
 
 func NewTcpConn(el *Eventloop, name string, fd int, localAddr, peerAddr net.Addr) *TcpConn {
@@ -52,6 +53,10 @@ func NewTcpConn(el *Eventloop, name string, fd int, localAddr, peerAddr net.Addr
 	return conn
 }
 
+func (c *TcpConn) Eventloop() *Eventloop {
+	return c.el
+}
+
 func (c *TcpConn) SetOnConn(cb func(*TcpConn)) {
 	c.onConn = cb
 }
@@ -64,8 +69,15 @@ func (c *TcpConn) SetOnClose(cb func(*TcpConn)) {
 	c.onClose = cb
 }
 
+func (c *TcpConn) SetOnWriteComplete(cb func(*TcpConn)) {
+	c.onWriteComplete = cb
+}
+
 func (c *TcpConn) Write(buf []byte) (int, error) {
 	if c.state == Connected {
+		if len(buf) == 0 {
+			return 0, nil
+		}
 		var sent int
 		// if no data in outbound buffer, try writing directly
 		if !c.ch.isWriting() && c.outbound.ReadableBytes() == 0 {
@@ -77,6 +89,12 @@ func (c *TcpConn) Write(buf []byte) (int, error) {
 			sent = n
 			if sent < len(buf) {
 				logging.Debugf("write partial data: %d/%d", n, len(buf))
+			} else {
+				if c.onWriteComplete != nil {
+					c.el.AsyncExecute(func() {
+						c.onWriteComplete(c)
+					})
+				}
 			}
 		}
 		if sent < len(buf) {
@@ -114,6 +132,10 @@ func (c *TcpConn) ShutdownWrite() {
 	if c.state == Connected {
 		c.el.AsyncExecute(c.shutdownWrite)
 	}
+}
+
+func (c *TcpConn) SetTcpNoDelay(enable bool) error {
+	return c.so.setTcpNoDelay(enable)
 }
 
 func (c *TcpConn) shutdownWrite() {
@@ -159,6 +181,7 @@ func (c *TcpConn) handleRead(ts time.Time) {
 }
 
 func (c *TcpConn) handleWrite() {
+	logging.Debugf("handle write: %d", c.outbound.ReadableBytes())
 	if c.ch.isWriting() {
 		data := c.outbound.Peek()
 		n, err := unix.Write(c.ch.fd, data)
@@ -170,6 +193,11 @@ func (c *TcpConn) handleWrite() {
 		c.outbound.Advance(n)
 		if c.outbound.ReadableBytes() == 0 {
 			c.ch.disableWriting()
+			if c.onWriteComplete != nil {
+				c.el.AsyncExecute(func() {
+					c.onWriteComplete(c)
+				})
+			}
 			if c.state == Disconnecting {
 				c.shutdownWrite()
 			}

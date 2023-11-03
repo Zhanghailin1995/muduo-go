@@ -22,22 +22,23 @@ func (b *Buffer) ReadFd(fd int) (int, error) {
 	// in one time, muduo use level-triggered epoll, so it will be called again.
 	var extraBuf [65536]byte
 	var iov [2][]byte
+	writable := b.WritableBytes()
 	iov[0] = b.buf[b.writeIndex:]
 	iov[1] = extraBuf[:]
 	n, err := unix.Readv(fd, iov[:])
 	if err != nil {
 		return n, err
-	} else if n <= len(b.buf)-b.writeIndex {
+	} else if n <= writable {
 		b.writeIndex += n
 	} else {
 		b.writeIndex = len(b.buf)
-		_, _ = b.Write(extraBuf[:n-(len(b.buf)-b.writeIndex)])
+		_, _ = b.Write(extraBuf[:n-writable])
 	}
 	return n, nil
 }
 
 func (b *Buffer) Next(n int) []byte {
-	if n < 0 || n > b.ReadableBytes() {
+	if n < 0 || n >= b.ReadableBytes() {
 		ret := b.buf[b.readIndex:b.writeIndex]
 		b.Reset(0)
 		return ret
@@ -83,6 +84,16 @@ func (b *Buffer) Reset(n int) {
 
 func (b *Buffer) ensureWritableBytes(n int) {
 	if b.WritableBytes() < n {
+		b.makeSpace(n)
+	}
+}
+
+func (b *Buffer) makeSpace(n int) {
+	if b.WritableBytes()+b.ReadableBytes() < n {
 		b.buf = append(b.buf, make([]byte, n)...)
+	} else {
+		copy(b.buf, b.buf[b.readIndex:b.writeIndex])
+		b.writeIndex -= b.readIndex
+		b.readIndex = 0
 	}
 }

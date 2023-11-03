@@ -69,6 +69,14 @@ func (s *socket) setReuseAddr(f bool) error {
 	return unix.SetsockoptInt(s.fd, unix.SOL_SOCKET, unix.SO_REUSEADDR, flag)
 }
 
+func (s *socket) setTcpNoDelay(f bool) error {
+	flag := 1
+	if !f {
+		flag = 0
+	}
+	return unix.SetsockoptInt(s.fd, unix.IPPROTO_TCP, unix.TCP_NODELAY, flag)
+}
+
 func sysSocket(family, sotype, proto int) (int, error) {
 	return unix.Socket(family, sotype|unix.SOCK_NONBLOCK|unix.SOCK_CLOEXEC, proto)
 }

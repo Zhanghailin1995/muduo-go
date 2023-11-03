@@ -8,7 +8,7 @@ import (
 )
 
 func TestAcceptor(t *testing.T) {
-	el := NewEventloop()
+	el := NewEventloop("")
 	ac := newAcceptor(el, "tcp4://:9981", nil)
 	ac.cb = func(fd int, addr net.Addr) {
 		logging.Debugf("new connection: fd=%d, addr=%s", fd, addr.String())
