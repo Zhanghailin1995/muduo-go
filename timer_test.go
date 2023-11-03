@@ -9,11 +9,11 @@ import (
 
 func TestLowerBound(t *testing.T) {
 	timers := &timerTaskHeap{
-		tasks: make([]*timerTask, 0),
+		tasks: make([]*TimerTask, 0),
 	}
 	for i := 0; i < 10; i++ {
 
-		heap.Push(timers, &timerTask{
+		heap.Push(timers, &TimerTask{
 			expire:   time.Unix(int64(rand.Intn(100)), 0),
 			interval: time.Second,
 			repeat:   true,

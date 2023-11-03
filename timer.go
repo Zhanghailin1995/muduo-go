@@ -13,18 +13,38 @@ var (
 	invalidTime = time.Unix(0, 0)
 )
 
-type timerTask struct {
+type TimerTask struct {
+	tq       *timerQueue
 	expire   time.Time
 	interval time.Duration
 	repeat   bool
 	cb       func()
+	index    int // for heap
+	canceled bool
 }
 
-func (tt *timerTask) run() {
+func newTimerTask(tq *timerQueue, cb func(), t time.Time, interval time.Duration) *TimerTask {
+	tt := &TimerTask{
+		tq:       tq,
+		expire:   t,
+		cb:       cb,
+		interval: interval,
+		repeat:   interval > 0,
+		index:    -1,
+		canceled: false,
+	}
+	return tt
+}
+
+func (tt *TimerTask) Cancel() {
+	tt.tq.cancel(tt)
+}
+
+func (tt *TimerTask) run() {
 	tt.cb()
 }
 
-func (tt *timerTask) restart(t time.Time) {
+func (tt *TimerTask) restart(t time.Time) {
 	if tt.repeat {
 		tt.expire = t.Add(tt.interval)
 	} else {
@@ -50,7 +70,7 @@ func newTimerQueue(el *Eventloop) *timerQueue {
 		timerFd:        timerFd,
 		timerFdChannel: timerFdChannel,
 		tasks: &timerTaskHeap{
-			tasks: make([]*timerTask, 0),
+			tasks: make([]*TimerTask, 0),
 		},
 	}
 	timerFdChannel.setReadCallback(tq.handleRead)
@@ -58,19 +78,38 @@ func newTimerQueue(el *Eventloop) *timerQueue {
 	return tq
 }
 
-func (tq *timerQueue) addTask(cb func(), t time.Time, interval time.Duration) *timerTask {
-	tt := &timerTask{
-		expire:   t,
-		cb:       cb,
-		interval: interval,
-		repeat:   interval > 0,
-	}
+func (tq *timerQueue) addTask(cb func(), t time.Time, interval time.Duration) *TimerTask {
+	tt := newTimerTask(tq, cb, t, interval)
 	earliestChanged := tq.insert(tt)
 	if earliestChanged {
 		logging.Debugf("timerQueue::addTask() earliestChanged")
 		resetTimerFd(tq.timerFd, t)
 	}
 	return tt
+}
+
+func (tq *timerQueue) addTask0(task *TimerTask) {
+	earliestChanged := tq.insert(task)
+	if earliestChanged {
+		logging.Debugf("timerQueue::addTask0() earliestChanged")
+		resetTimerFd(tq.timerFd, task.expire)
+	}
+}
+
+func (tq *timerQueue) cancel(tt *TimerTask) {
+	tq.el.AsyncExecute(func() {
+		// why we need to set repeat to false?
+		// because when user call cancel, it means user don't want to run this task any more
+		// timer queue will call handleRead to run expired task, if task is repeat and not cancel, it will be added to timer queue again
+		// user can call cancel in TimerTask's timeout callback, so we need to set repeat to false
+		tt.repeat = false
+		// if you cancel the timer in another timer's callback, the timer will still run, so we need to set canceled to true
+		// and don't run timer's callback if it is canceled
+		tt.canceled = true
+		if tt.index > 0 {
+			heap.Remove(tq.tasks, tt.index)
+		}
+	})
 }
 
 func (tq *timerQueue) handleRead(ts time.Time) {
@@ -83,7 +122,9 @@ func (tq *timerQueue) handleRead(ts time.Time) {
 	now := time.Now()
 	expiredTask := tq.getExpired(now)
 	for _, v := range expiredTask {
-		v.run()
+		if !v.canceled {
+			v.run()
+		}
 	}
 	tq.reset(expiredTask, now)
 }
@@ -92,9 +133,9 @@ func (tq *timerQueue) shutdown() {
 	_ = unix.Close(tq.timerFd)
 }
 
-func (tq *timerQueue) reset(expired []*timerTask, t time.Time) {
+func (tq *timerQueue) reset(expired []*TimerTask, t time.Time) {
 	for _, v := range expired {
-		if v.repeat {
+		if v.repeat && !v.canceled {
 			v.restart(t)
 			tq.insert(v)
 		}
@@ -123,7 +164,7 @@ func resetTimerFd(timerFd int, t time.Time) {
 	}
 }
 
-func (tq *timerQueue) insert(task *timerTask) bool {
+func (tq *timerQueue) insert(task *TimerTask) bool {
 	earliestChanged := false
 	expire := task.expire
 	if tq.tasks.Len() == 0 || expire.Before(tq.tasks.Top().expire) {
@@ -134,12 +175,12 @@ func (tq *timerQueue) insert(task *timerTask) bool {
 
 }
 
-func (tq *timerQueue) getExpired(t time.Time) []*timerTask {
+func (tq *timerQueue) getExpired(t time.Time) []*TimerTask {
 	return tq.tasks.getAndRemoveExpired(t)
 }
 
 type timerTaskHeap struct {
-	tasks []*timerTask
+	tasks []*TimerTask
 }
 
 func (h *timerTaskHeap) Len() int {
@@ -158,10 +199,13 @@ func (h *timerTaskHeap) Less(i, j int) bool {
 
 func (h *timerTaskHeap) Swap(i, j int) {
 	h.tasks[i], h.tasks[j] = h.tasks[j], h.tasks[i]
+	h.tasks[i].index = i
+	h.tasks[j].index = j
 }
 
 func (h *timerTaskHeap) Push(x interface{}) {
-	h.tasks = append(h.tasks, x.(*timerTask))
+	h.tasks = append(h.tasks, x.(*TimerTask))
+	x.(*TimerTask).index = len(h.tasks) - 1
 }
 
 func (h *timerTaskHeap) Pop() interface{} {
@@ -169,16 +213,18 @@ func (h *timerTaskHeap) Pop() interface{} {
 	n := len(old)
 	x := old[n-1]
 	old[n-1] = nil // avoid memory leak
+	x.index = -1   // for safety
+	//x.tq = nil
 	h.tasks = old[0 : n-1]
 	return x
 }
 
-func (h *timerTaskHeap) Top() *timerTask {
+func (h *timerTaskHeap) Top() *TimerTask {
 	return h.tasks[0]
 }
 
-func (h *timerTaskHeap) getAndRemoveExpired(t time.Time) []*timerTask {
-	var ret []*timerTask
+func (h *timerTaskHeap) getAndRemoveExpired(t time.Time) []*TimerTask {
+	var ret []*TimerTask
 	for {
 		if h.Len() == 0 {
 			break

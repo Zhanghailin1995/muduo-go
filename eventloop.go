@@ -95,35 +95,42 @@ func (el *Eventloop) runPendingTasks() {
 	el.runningPendingTasks = false
 }
 
-func (el *Eventloop) Schedule(callback TimeoutCallback, t time.Time) {
-	el.tq.addTask(callback, t, 0)
+func (el *Eventloop) Schedule(callback TimeoutCallback, t time.Time) *TimerTask {
+	return el.tq.addTask(callback, t, 0)
 }
 
-func (el *Eventloop) AsyncSchedule(callback TimeoutCallback, d time.Duration) {
+func (el *Eventloop) AsyncSchedule(callback TimeoutCallback, t time.Time) *TimerTask {
+	tt := newTimerTask(el.tq, callback, t, 0)
 	el.AsyncExecute(func() {
-		el.Schedule(callback, time.Now().Add(d))
+		el.tq.addTask0(tt)
 	})
+	return tt
 }
 
-func (el *Eventloop) ScheduleDelay(callback TimeoutCallback, d time.Duration) {
-	el.tq.addTask(callback, time.Now().Add(d), 0)
+func (el *Eventloop) ScheduleDelay(callback TimeoutCallback, d time.Duration) *TimerTask {
+	return el.tq.addTask(callback, time.Now().Add(d), 0)
 }
 
-func (el *Eventloop) AsyncScheduleDelay(callback TimeoutCallback, d time.Duration) {
+func (el *Eventloop) AsyncScheduleDelay(callback TimeoutCallback, d time.Duration) *TimerTask {
+	tt := newTimerTask(el.tq, callback, time.Now().Add(d), 0)
 	el.AsyncExecute(func() {
-		el.ScheduleDelay(callback, d)
+		el.tq.addTask0(tt)
 	})
+	return tt
 }
 
-func (el *Eventloop) ScheduleAtFixRate(callback TimeoutCallback, interval time.Duration) {
+func (el *Eventloop) ScheduleAtFixRate(callback TimeoutCallback, interval time.Duration) *TimerTask {
 	t := time.Now()
-	el.tq.addTask(callback, t.Add(interval), interval)
+	return el.tq.addTask(callback, t.Add(interval), interval)
 }
 
-func (el *Eventloop) AsyncScheduleAtFixRate(callback TimeoutCallback, interval time.Duration) {
+func (el *Eventloop) AsyncScheduleAtFixRate(callback TimeoutCallback, interval time.Duration) *TimerTask {
+	t := time.Now()
+	tt := newTimerTask(el.tq, callback, t.Add(interval), interval)
 	el.AsyncExecute(func() {
-		el.ScheduleAtFixRate(callback, interval)
+		el.tq.addTask0(tt)
 	})
+	return tt
 }
 
 func (el *Eventloop) loop() {
@@ -152,6 +159,7 @@ func (el *Eventloop) loop() {
 
 func (el *Eventloop) destroy() {
 	_ = unix.Close(el.evtFd)
+	el.tq.shutdown()
 }
 
 func (el *Eventloop) Stop() {

@@ -3,6 +3,7 @@ package muduo
 import (
 	"golang.org/x/sys/unix"
 	"muduo/pkg/logging"
+	"muduo/pkg/util"
 	"testing"
 	"time"
 	"unsafe"
@@ -63,13 +64,22 @@ func TestEventloop_ScheduleDelay(t *testing.T) {
 func TestEventloop_ScheduleAtFixRate(t *testing.T) {
 	var count int
 	el := NewEventloop("")
-	el.ScheduleAtFixRate(func() {
+	var tt *TimerTask
+	tt = el.ScheduleAtFixRate(func() {
 		count++
 		logging.Infof("hello world: %d", count)
-		if count == 5 {
-			el.Stop()
+		if count == 2 {
+			logging.Infof("cancel timer task")
+			util.Assert(tt != nil, "timer task should not be nil")
+			tt.Cancel()
 		}
-	}, time.Second*2)
+	}, time.Second*1)
+
+	el.ScheduleDelay(func() {
+		logging.Infof("stop eventloop")
+		el.Stop()
+	}, time.Second*8)
+
 	el.loop()
 
 	logging.Infof("eventloop stopped")
