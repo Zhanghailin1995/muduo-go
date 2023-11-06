@@ -11,7 +11,7 @@ import (
 
 func TestEventloop_Loop(t *testing.T) {
 	el := &Eventloop{}
-	el.loop()
+	el.Loop()
 }
 
 func TestEventloop_Timefd(t *testing.T) {
@@ -34,7 +34,7 @@ func TestEventloop_Timefd(t *testing.T) {
 	howlong := unix.ItimerSpec{}
 	howlong.Value.Sec = 5
 	unix.TimerfdSettime(timerFd, 0, &howlong, nil)
-	el.loop()
+	el.Loop()
 	unix.Close(timerFd)
 }
 
@@ -45,7 +45,7 @@ func TestEventloop_Schedule(t *testing.T) {
 		logging.Infof("hello world")
 		el.Stop()
 	}, when)
-	el.loop()
+	el.Loop()
 
 	logging.Infof("eventloop stopped")
 }
@@ -56,7 +56,7 @@ func TestEventloop_ScheduleDelay(t *testing.T) {
 		logging.Infof("hello world")
 		el.Stop()
 	}, time.Second*2)
-	el.loop()
+	el.Loop()
 
 	logging.Infof("eventloop stopped")
 }
@@ -80,7 +80,7 @@ func TestEventloop_ScheduleAtFixRate(t *testing.T) {
 		el.Stop()
 	}, time.Second*8)
 
-	el.loop()
+	el.Loop()
 
 	logging.Infof("eventloop stopped")
 }
@@ -92,7 +92,7 @@ func TestEventloop_Execute(t *testing.T) {
 			logging.Infof("hello world")
 		})
 	}, time.Now().Add(time.Second*2))
-	el.loop()
+	el.Loop()
 
 	logging.Infof("eventloop stopped")
 }
@@ -108,7 +108,7 @@ func TestEventloop_AsyncExecute(t *testing.T) {
 			}, time.Second*2)
 		})
 	}, time.Now().Add(time.Second*2))
-	el.loop()
+	el.Loop()
 
 	logging.Infof("eventloop stopped")
 }

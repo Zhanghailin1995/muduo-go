@@ -5,6 +5,7 @@ import (
 	"muduo/pkg/logging"
 	"net"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,6 +20,8 @@ type TcpServer struct {
 	started         bool
 	nextConnId      uint64
 	connMap         map[string]*TcpConn
+	tcpNoDelay      int32
+	keepAlive       int32
 }
 
 func NewTcpServer(el *Eventloop, name string, addr string, engineCnt int) *TcpServer {
@@ -30,9 +33,19 @@ func NewTcpServer(el *Eventloop, name string, addr string, engineCnt int) *TcpSe
 		started:    false,
 		nextConnId: 1,
 		connMap:    make(map[string]*TcpConn),
+		tcpNoDelay: 1,
+		keepAlive:  1,
 	}
 	s.ac.cb = s.newConn // acceptor callback
 	return s
+}
+
+func (s *TcpServer) SetTcpNoDelay(tcpNoDelay bool) {
+	if tcpNoDelay {
+		atomic.StoreInt32(&s.tcpNoDelay, 1)
+	} else {
+		atomic.StoreInt32(&s.tcpNoDelay, 0)
+	}
 }
 
 func (s *TcpServer) Start() {
@@ -73,12 +86,15 @@ func (s *TcpServer) newConn(fd int, addr net.Addr) {
 	localAddr := s.ac.localAddr
 	el := s.group.GetNextLoop()
 	conn := NewTcpConn(el, connName, fd, localAddr, addr)
-	_ = conn.SetTcpNoDelay(true)
+	if atomic.LoadInt32(&s.tcpNoDelay) == 1 {
+		_ = conn.SetTcpNoDelay(true)
+	}
+	// 为什么要将conn放到map中呢？
 	s.connMap[connName] = conn
 	conn.SetOnConn(s.onConn)
 	conn.SetOnMsg(s.onMsg)
 	conn.SetOnWriteComplete(s.onWriteComplete)
-	conn.SetOnClose(s.removeConn)
+	conn.setOnClose(s.removeConn)
 	el.AsyncExecute(func() {
 		conn.connectEstablished()
 	})

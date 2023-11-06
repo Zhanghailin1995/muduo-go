@@ -15,5 +15,5 @@ func TestAcceptor(t *testing.T) {
 		_, _ = unix.Write(fd, []byte("how are you?\n"))
 	}
 	ac.listen()
-	el.loop()
+	el.Loop()
 }

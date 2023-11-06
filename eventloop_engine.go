@@ -39,5 +39,5 @@ func (eng *EventloopEngine) run() {
 	eng.cond.Broadcast()
 	eng.mu.Unlock()
 
-	el.loop()
+	el.Loop()
 }

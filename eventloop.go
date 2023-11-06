@@ -133,7 +133,7 @@ func (el *Eventloop) AsyncScheduleAtFixRate(callback TimeoutCallback, interval t
 	return tt
 }
 
-func (el *Eventloop) loop() {
+func (el *Eventloop) Loop() {
 	atomic.StoreInt32(&el.looping, 1)
 	atomic.StoreInt32(&el.quit, 0)
 	logging.Infof("Eventloop start looping")

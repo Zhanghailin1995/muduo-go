@@ -22,7 +22,7 @@ func TestNewTcpServer(t *testing.T) {
 	})
 
 	svr.Start()
-	el.loop()
+	el.Loop()
 }
 
 func TestTcpServer_Write(t *testing.T) {
@@ -44,7 +44,7 @@ func TestTcpServer_Write(t *testing.T) {
 	})
 
 	svr.Start()
-	el.loop()
+	el.Loop()
 }
 
 func TestTcpServer_SetOnWriteComplete(t *testing.T) {
@@ -71,5 +71,5 @@ func TestTcpServer_SetOnWriteComplete(t *testing.T) {
 	})
 
 	svr.Start()
-	el.loop()
+	el.Loop()
 }

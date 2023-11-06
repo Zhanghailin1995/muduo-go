@@ -65,7 +65,7 @@ func (c *TcpConn) SetOnMsg(cb func(*TcpConn, *Buffer, time.Time)) {
 	c.onMsg = cb
 }
 
-func (c *TcpConn) SetOnClose(cb func(*TcpConn)) {
+func (c *TcpConn) setOnClose(cb func(*TcpConn)) {
 	c.onClose = cb
 }
 
