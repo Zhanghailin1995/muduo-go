@@ -1,6 +1,9 @@
 package muduo
 
-import "golang.org/x/sys/unix"
+import (
+	"bytes"
+	"golang.org/x/sys/unix"
+)
 
 type Buffer struct {
 	buf        []byte
@@ -54,11 +57,31 @@ func (b *Buffer) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
+func (b *Buffer) Search(s []byte) int {
+	if len(s) == 0 || len(s) > b.ReadableBytes() {
+		return -1
+	}
+	return bytes.Index(b.buf[b.readIndex:b.writeIndex], s)
+}
+
 func (b *Buffer) Write(buf []byte) (int, error) {
 	b.ensureWritableBytes(len(buf))
 	n := copy(b.buf[b.writeIndex:], buf)
 	b.writeIndex += n
 	return n, nil
+}
+
+func (b *Buffer) Capacity() int {
+	return len(b.buf)
+}
+
+func (b *Buffer) Shrink(reserve int) {
+	buf := make([]byte, b.ReadableBytes()+reserve)
+	data := b.Peek()
+	copy(buf, data)
+	b.buf = buf
+	b.readIndex = 0
+	b.writeIndex = len(data)
 }
 
 func (b *Buffer) ReadableBytes() int {

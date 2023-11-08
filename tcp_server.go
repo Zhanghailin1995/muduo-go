@@ -12,6 +12,7 @@ import (
 type TcpServer struct {
 	el              *Eventloop
 	name            string
+	addr            string
 	ac              *acceptor
 	group           *EventloopEngineGroup
 	onConn          func(*TcpConn)
@@ -36,8 +37,13 @@ func NewTcpServer(el *Eventloop, name string, addr string, engineCnt int) *TcpSe
 		tcpNoDelay: 1,
 		keepAlive:  1,
 	}
+	s.addr = s.ac.localAddr.String()
 	s.ac.cb = s.newConn // acceptor callback
 	return s
+}
+
+func (s *TcpServer) SetEngineCnt(cnt int) {
+	s.group.engineCnt = cnt
 }
 
 func (s *TcpServer) SetTcpNoDelay(tcpNoDelay bool) {
@@ -73,7 +79,7 @@ func (s *TcpServer) SetOnWriteComplete(cb func(*TcpConn)) {
 }
 
 func (s *TcpServer) newConn(fd int, addr net.Addr) {
-	connName := s.name + "-conn-" + strconv.Itoa(int(s.nextConnId))
+	connName := s.name + "[" + s.addr + "]" + "-conn-" + strconv.Itoa(int(s.nextConnId))
 	s.nextConnId++
 	logging.Infof("new connection: fd=%d, addr=%s", fd, addr.String())
 	// TODO get local addr

@@ -97,7 +97,11 @@ func (c *TcpClient) Destroy() {
 
 func (c *TcpClient) newConn(fd int) {
 	peerAddr := SockaddrToTCPOrUnixAddr(c.connector.unixSvrAddr)
-	localAddr := GetLocalAddr(fd)
+	localAddr, err := GetLocalAddr(fd)
+	if err != nil {
+		logging.Errorf("TcpClient::newConn [%s] - failed to get local addr, %v", c.connector.svrAddr, err)
+		return
+	}
 	name := localAddr.String() + "-" + peerAddr.String() + "#" + strconv.FormatUint(c.nextConnId, 10)
 	c.nextConnId++
 	conn := NewTcpConn(c.el, name, fd, localAddr, peerAddr)
@@ -126,10 +130,10 @@ func (c *TcpClient) removeConn(conn *TcpConn) {
 	}
 }
 
-func GetLocalAddr(fd int) net.Addr {
+func GetLocalAddr(fd int) (net.Addr, error) {
 	sa, err := unix.Getsockname(fd)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return SockaddrToTCPOrUnixAddr(sa)
+	return SockaddrToTCPOrUnixAddr(sa), nil
 }

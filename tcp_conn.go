@@ -6,7 +6,9 @@ import (
 	"muduo/pkg/logging"
 	"muduo/pkg/util"
 	"net"
+	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 type ConnState int32
@@ -34,6 +36,7 @@ type TcpConn struct {
 	onWriteComplete func(*TcpConn)
 	inbound         *Buffer
 	outbound        *Buffer
+	ctx             interface{}
 }
 
 func NewTcpConn(el *Eventloop, name string, fd int, localAddr, peerAddr net.Addr) *TcpConn {
@@ -71,6 +74,42 @@ func (c *TcpConn) setOnClose(cb func(*TcpConn)) {
 
 func (c *TcpConn) SetOnWriteComplete(cb func(*TcpConn)) {
 	c.onWriteComplete = cb
+}
+
+func (c *TcpConn) GetConnState() ConnState {
+	return c.state
+}
+
+func (c *TcpConn) GetLocalAddr() net.Addr {
+	return c.localAddr
+}
+
+func (c *TcpConn) GetPeerAddr() net.Addr {
+	return c.peerAddr
+}
+
+func (c *TcpConn) GetInboundBuffer() *Buffer {
+	return c.inbound
+}
+
+func (c *TcpConn) GetOutboundBuffer() *Buffer {
+	return c.outbound
+}
+
+func (c *TcpConn) IsConnected() bool {
+	return c.state == Connected
+}
+
+func (c *TcpConn) IsDisconnected() bool {
+	return c.state == Disconnected
+}
+
+func (c *TcpConn) SetContext(ctx interface{}) {
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.ctx)), unsafe.Pointer(&ctx))
+}
+
+func (c *TcpConn) GetContext() interface{} {
+	return *(*interface{})(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.ctx))))
 }
 
 func (c *TcpConn) Write(buf []byte) (int, error) {
@@ -130,6 +169,7 @@ func (c *TcpConn) AsyncWrite(buf []byte, cb AsyncCallback) error {
 
 func (c *TcpConn) ShutdownWrite() {
 	if c.state == Connected {
+		c.state = Disconnecting
 		c.el.AsyncExecute(c.shutdownWrite)
 	}
 }
@@ -216,5 +256,6 @@ func (c *TcpConn) handleClose() {
 }
 
 func (c *TcpConn) handleError(err error) {
-	logging.Debugf("connection error: fd=%d, addr=%s", c.so.fd, c.peerAddr.String())
+	// TODO onError
+	logging.Errorf("connection error: %s, addr=%s, err: %v", c.name, c.peerAddr.String(), err)
 }
