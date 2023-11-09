@@ -112,6 +112,10 @@ func (c *TcpConn) GetContext() interface{} {
 	return *(*interface{})(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.ctx))))
 }
 
+func (c *TcpConn) Name() string {
+	return c.name
+}
+
 func (c *TcpConn) Write(buf []byte) (int, error) {
 	if c.state == Connected {
 		if len(buf) == 0 {

@@ -3,6 +3,7 @@ package memcached_server
 import (
 	"muduo"
 	"muduo/pkg/util"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,13 +16,63 @@ type slot struct {
 	mu    sync.Mutex
 }
 
+type Options struct {
+	engineCnt int
+	port      int
+}
+
+func loadOptions(options ...Option) *Options {
+	opts := new(Options)
+	for _, option := range options {
+		option(opts)
+	}
+	return opts
+}
+
+type Option func(opts *Options)
+
 type Memcached struct {
-	slots  []*slot
-	slotn  int
-	server *muduo.TcpServer
-	el     *muduo.Eventloop
-	stime  time.Time
-	mu     sync.Mutex
+	slots    []*slot
+	slotn    int
+	server   *muduo.TcpServer
+	el       *muduo.Eventloop
+	stime    time.Time
+	sessions map[string]*Session
+	mu       sync.Mutex
+}
+
+func WithEngineCnt(engineCnt int) Option {
+	return func(opts *Options) {
+		opts.engineCnt = engineCnt
+	}
+}
+
+func WithPort(port int) Option {
+	return func(opts *Options) {
+		opts.port = port
+	}
+}
+
+func NewMemcached(el *muduo.Eventloop, opts ...Option) *Memcached {
+	options := loadOptions(opts...)
+	m := &Memcached{
+		slotn:    1024,
+		slots:    make([]*slot, 1024),
+		server:   muduo.NewTcpServer(el, "memcached", "tcp4://:"+strconv.Itoa(options.port), options.engineCnt),
+		el:       el,
+		sessions: make(map[string]*Session),
+	}
+	for i := 0; i < m.slotn; i++ {
+		m.slots[i] = &slot{
+			items: make(map[string]*Item),
+		}
+	}
+	return m
+}
+
+func (m *Memcached) Start() {
+	m.stime = time.Now()
+	m.server.Start()
 }
 
 func (m *Memcached) setEngineCnt(engineCnt int) {
@@ -120,8 +171,14 @@ func (m *Memcached) Delete(key string) (success bool) {
 
 func (m *Memcached) onConn(conn *muduo.TcpConn) {
 	if conn.IsConnected() {
-
+		sess := NewSession(m, conn)
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		util.Assert(m.sessions[conn.Name()] == nil, "m.sessions[conn.Name()] == nil")
+		m.sessions[conn.Name()] = sess
 	} else {
-		conn.SetContext(nil)
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		delete(m.sessions, conn.Name())
 	}
 }

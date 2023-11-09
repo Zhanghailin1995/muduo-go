@@ -41,6 +41,25 @@ type Session struct {
 	reqProcessed   uint64
 }
 
+var LongestKeySize = 250
+var LongestKey = string(bytes.Repeat([]byte("x"), LongestKeySize))
+
+func NewSession(m *Memcached, conn *muduo.TcpConn) *Session {
+	return &Session{
+		m:              m,
+		conn:           conn,
+		state:          NewCommand,
+		protocol:       Ascii,
+		noreply:        false,
+		policy:         Invalid,
+		bytesToDiscard: 0,
+		needle:         NewItem(LongestKey, 0, 0, 2, 0),
+		bytesRead:      0,
+		reqProcessed:   0,
+		outputBuffer:   muduo.NewBuffer(),
+	}
+}
+
 func (s *Session) OnMsg(conn *muduo.TcpConn, buf *muduo.Buffer, t time.Time) {
 	initialReadable := buf.ReadableBytes()
 	for buf.ReadableBytes() > 0 {
